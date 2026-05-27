@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_URL=jdbc:postgresql://db:5432/sienep
+      - DB_USER=proyecto
+      - DB_PASSWORD=proyecto2025
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sienep-network
+
+  db:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=sienep
+      - POSTGRES_USER=proyecto
+      - POSTGRES_PASSWORD=proyecto2025
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/main/resources/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proyecto -d sienep"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sienep-network
+
+networks:
+  sienep-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
