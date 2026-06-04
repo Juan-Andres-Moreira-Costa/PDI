@@ -9,6 +9,9 @@ services:
       - DB_URL=jdbc:postgresql://db:5432/sienep
       - DB_USER=proyecto
       - DB_PASSWORD=proyecto2025
+      - JWT_SECRET=c2llbmVwLXV0ZWMtMjAyNi1zZWNyZXQta2V5LXN1cGVyLXNlZ3VyYS1wYXJhLWpzb24td2ViLXRva2Vu
+      - JWT_EXPIRATION=86400000
+      - NOTIF_HABILITADAS=false
     depends_on:
       db:
         condition: service_healthy
