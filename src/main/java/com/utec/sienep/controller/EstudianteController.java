@@ -6,18 +6,22 @@ import com.utec.sienep.dto.response.ApiResponseDTO;
 import com.utec.sienep.dto.response.EstudianteResponseDTO;
 import com.utec.sienep.service.EstudianteService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/estudiantes")
-@Tag(name = "Estudiantes", description = "Gestión de estudiantes del sistema SIENEP (RF05-RF08)")
+@Tag(name = "Estudiantes", description = "Gestión completa de estudiantes (RF05-RF09). " +
+        "RNF01/RD01: los campos sensibles (informacionSalud, observacionesConfidenciales) " +
+        "solo aparecen en la respuesta según el rol del usuario autenticado.")
+@SecurityRequirement(name = "bearerAuth")
 public class EstudianteController {
 
     private final EstudianteService estudianteService;
@@ -26,87 +30,66 @@ public class EstudianteController {
         this.estudianteService = estudianteService;
     }
 
-    // ===================== RF05 – Alta =====================
-
     @PostMapping
-    @Operation(
-        summary = "Alta de estudiante (RF05)",
-        description = "Registra un nuevo estudiante. Valida cédula uruguaya (dígito verificador) y edad mínima de 18 años."
-    )
+    @Operation(summary = "Alta de estudiante (RF05)",
+        description = "Registra un nuevo estudiante. " +
+                      "Valida cédula uruguaya (dígito verificador) y edad mínima 18 años. " +
+                      "RD01: observacionesConfidenciales solo es persistido por ROLE_DIRECCION/ADMIN.")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE','PSICOPEDAGOGO')")
     public ResponseEntity<ApiResponseDTO<EstudianteResponseDTO>> crear(
             @Valid @RequestBody EstudianteRequestDTO dto) {
-
-        EstudianteResponseDTO creado = estudianteService.crear(dto);
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(ApiResponseDTO.ok("Estudiante registrado exitosamente.", creado));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponseDTO.ok("Estudiante registrado exitosamente.",
+                        estudianteService.crear(dto)));
     }
 
-    // ===================== RF08 – Búsqueda / Listado =====================
-
     @GetMapping
-    @Operation(
-        summary = "Listar estudiantes activos (RF08)",
-        description = "Retorna todos los estudiantes activos. Acepta filtro opcional por nombre/apellido o cédula."
-    )
+    @Operation(summary = "Listar / buscar estudiantes activos (RF08)",
+        description = "Filtros opcionales: ?nombre= (parcial), ?cedula= (exacta). " +
+                      "RNF01: la respuesta incluye informacionSalud solo para roles autorizados.")
     public ResponseEntity<ApiResponseDTO<List<EstudianteResponseDTO>>> listar(
-            @Parameter(description = "Filtro por nombre o apellido (parcial)")
             @RequestParam(required = false) String nombre,
-            @Parameter(description = "Filtro por cédula exacta")
             @RequestParam(required = false) String cedula) {
 
         if (cedula != null && !cedula.isBlank()) {
-            EstudianteResponseDTO estudiante = estudianteService.buscarPorCedula(cedula);
-            return ResponseEntity.ok(ApiResponseDTO.ok("Estudiante encontrado.", List.of(estudiante)));
+            return ResponseEntity.ok(ApiResponseDTO.ok("Estudiante encontrado.",
+                    List.of(estudianteService.buscarPorCedula(cedula))));
         }
-
         if (nombre != null && !nombre.isBlank()) {
-            List<EstudianteResponseDTO> lista = estudianteService.buscarPorNombre(nombre);
-            return ResponseEntity.ok(ApiResponseDTO.ok("Búsqueda completada.", lista));
+            return ResponseEntity.ok(ApiResponseDTO.ok("Resultados de búsqueda.",
+                    estudianteService.buscarPorNombre(nombre)));
         }
-
-        List<EstudianteResponseDTO> lista = estudianteService.listarActivos();
-        return ResponseEntity.ok(ApiResponseDTO.ok("Listado de estudiantes activos.", lista));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Listado de estudiantes activos.",
+                estudianteService.listarActivos()));
     }
 
     @GetMapping("/{id}")
-    @Operation(
-        summary = "Buscar estudiante por ID (RF08)",
-        description = "Retorna el estudiante activo con el ID indicado."
-    )
+    @Operation(summary = "Buscar estudiante por ID (RF08)")
     public ResponseEntity<ApiResponseDTO<EstudianteResponseDTO>> buscarPorId(
             @PathVariable Long id) {
-
-        EstudianteResponseDTO estudiante = estudianteService.buscarPorId(id);
-        return ResponseEntity.ok(ApiResponseDTO.ok("Estudiante encontrado.", estudiante));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Estudiante encontrado.",
+                estudianteService.buscarPorId(id)));
     }
 
-    // ===================== RF07 – Modificación =====================
-
     @PutMapping("/{id}")
-    @Operation(
-        summary = "Modificar estudiante (RF07)",
-        description = "Actualiza los datos de un estudiante activo. La cédula no puede modificarse."
-    )
+    @Operation(summary = "Modificar estudiante (RF07)",
+        description = "Actualiza los datos del estudiante. La cédula no puede modificarse.")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE','PSICOPEDAGOGO')")
     public ResponseEntity<ApiResponseDTO<EstudianteResponseDTO>> modificar(
             @PathVariable Long id,
             @Valid @RequestBody EstudianteRequestDTO dto) {
-
-        EstudianteResponseDTO actualizado = estudianteService.modificar(id, dto);
-        return ResponseEntity.ok(ApiResponseDTO.ok("Estudiante modificado exitosamente.", actualizado));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Estudiante modificado exitosamente.",
+                estudianteService.modificar(id, dto)));
     }
 
-    // ===================== RF06 – Baja Lógica =====================
-
     @DeleteMapping("/{id}")
-    @Operation(
-        summary = "Baja lógica de estudiante (RF06)",
-        description = "Realiza la baja lógica del estudiante (no elimina el registro). Requiere motivo de baja."
-    )
+    @Operation(summary = "Baja lógica de estudiante (RF06, RNF05)",
+        description = "Marca al estudiante como inactivo preservando todo el historial. " +
+                      "No elimina físicamente el registro.")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<Void>> darDeBaja(
             @PathVariable Long id,
             @Valid @RequestBody BajaEstudianteRequestDTO dto) {
-
         estudianteService.darDeBaja(id, dto);
         return ResponseEntity.ok(ApiResponseDTO.ok("Estudiante dado de baja exitosamente."));
     }

@@ -8,6 +8,8 @@ import com.utec.sienep.exception.RecursoNoEncontradoException;
 import com.utec.sienep.exception.ReglaNegocioException;
 import com.utec.sienep.repository.EstudianteRepository;
 import com.utec.sienep.util.ValidacionUtil;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,146 +21,161 @@ import java.util.stream.Collectors;
 public class EstudianteService {
 
     private final EstudianteRepository estudianteRepository;
+    private final AuditoriaService auditoriaService;
 
-    public EstudianteService(EstudianteRepository estudianteRepository) {
+    public EstudianteService(EstudianteRepository estudianteRepository,
+                             AuditoriaService auditoriaService) {
         this.estudianteRepository = estudianteRepository;
+        this.auditoriaService = auditoriaService;
     }
 
-    // ===================== RF05 – Alta de Estudiantes =====================
+    // ===================== RF05 – Alta =====================
 
     @Transactional
     public EstudianteResponseDTO crear(EstudianteRequestDTO dto) {
-
-        // Normalizar cédula (rellenar con cero si tiene 7 dígitos)
         String cedula = normalizarCedula(dto.getCedula());
 
-        // Validar cédula uruguaya (regla de negocio obligatoria)
         if (!ValidacionUtil.validarCedulaUruguaya(cedula)) {
             throw new ReglaNegocioException(
-                "La cédula '" + dto.getCedula() + "' no es válida según el algoritmo de dígito verificador uruguayo.");
+                    "La cédula '" + dto.getCedula() + "' no es válida según el algoritmo uruguayo.");
         }
-
-        // Validar edad mínima (regla de negocio obligatoria)
         if (!ValidacionUtil.esMayorDeEdad(dto.getFechaNacimiento())) {
             throw new ReglaNegocioException(
-                "El estudiante debe ser mayor de 18 años para ser registrado.");
+                    "El estudiante debe ser mayor de 18 años para ser registrado.");
         }
-
-        // Verificar que la cédula no esté ya registrada
         if (estudianteRepository.existsByCedula(cedula)) {
             throw new ReglaNegocioException(
-                "Ya existe un estudiante registrado con la cédula: " + cedula);
+                    "Ya existe un estudiante con la cédula: " + cedula);
         }
-
-        // Verificar que el email no esté ya registrado
         if (estudianteRepository.existsByEmail(dto.getEmail())) {
             throw new ReglaNegocioException(
-                "Ya existe un estudiante registrado con el email: " + dto.getEmail());
+                    "Ya existe un estudiante con el email: " + dto.getEmail());
         }
 
-        Estudiante estudiante = mapearDtoAEntidad(dto, new Estudiante());
-        estudiante.setCedula(cedula);
-        estudiante.setActivo(true);
-        estudiante.setFechaAlta(LocalDateTime.now());
+        Estudiante e = mapearDtoAEntidad(dto, new Estudiante());
+        e.setCedula(cedula);
+        e.setActivo(true);
+        e.setFechaAlta(LocalDateTime.now());
 
-        Estudiante guardado = estudianteRepository.save(estudiante);
+        Estudiante guardado = estudianteRepository.save(e);
+
+        auditoriaService.registrarExitoso(getUsername(), "ALTA_ESTUDIANTE",
+                "Estudiante", guardado.getId(), "Alta CI: " + cedula);
+
         return mapearEntidadADto(guardado);
     }
 
-    // ===================== RF08 – Búsqueda de Estudiantes =====================
+    // ===================== RF08 – Búsqueda =====================
 
     @Transactional(readOnly = true)
     public List<EstudianteResponseDTO> listarActivos() {
         return estudianteRepository.findByActivoTrue()
-                .stream()
-                .map(this::mapearEntidadADto)
-                .collect(Collectors.toList());
+                .stream().map(this::mapearEntidadADto).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public EstudianteResponseDTO buscarPorId(Long id) {
-        Estudiante estudiante = estudianteRepository.findByIdAndActivoTrue(id)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "No se encontró un estudiante activo con ID: " + id));
-        return mapearEntidadADto(estudiante);
+        return mapearEntidadADto(
+                estudianteRepository.findByIdAndActivoTrue(id)
+                        .orElseThrow(() -> new RecursoNoEncontradoException(
+                                "Estudiante no encontrado con ID: " + id)));
     }
 
     @Transactional(readOnly = true)
     public EstudianteResponseDTO buscarPorCedula(String cedula) {
-        String cedulaNorm = normalizarCedula(cedula);
-        Estudiante estudiante = estudianteRepository.findByCedulaAndActivoTrue(cedulaNorm)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "No se encontró un estudiante activo con cédula: " + cedula));
-        return mapearEntidadADto(estudiante);
+        return mapearEntidadADto(
+                estudianteRepository.findByCedulaAndActivoTrue(normalizarCedula(cedula))
+                        .orElseThrow(() -> new RecursoNoEncontradoException(
+                                "Estudiante no encontrado con cédula: " + cedula)));
     }
 
     @Transactional(readOnly = true)
     public List<EstudianteResponseDTO> buscarPorNombre(String termino) {
         return estudianteRepository.buscarPorNombreOApellido(termino)
-                .stream()
-                .map(this::mapearEntidadADto)
-                .collect(Collectors.toList());
+                .stream().map(this::mapearEntidadADto).collect(Collectors.toList());
     }
 
-    // ===================== RF07 – Modificación de Estudiantes =====================
+    // ===================== RF07 – Modificación =====================
 
     @Transactional
     public EstudianteResponseDTO modificar(Long id, EstudianteRequestDTO dto) {
-        Estudiante estudiante = estudianteRepository.findByIdAndActivoTrue(id)
+        Estudiante e = estudianteRepository.findByIdAndActivoTrue(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "No se encontró un estudiante activo con ID: " + id));
+                        "Estudiante no encontrado con ID: " + id));
 
-        // Validar edad mínima con la nueva fecha (si cambió)
         if (!ValidacionUtil.esMayorDeEdad(dto.getFechaNacimiento())) {
-            throw new ReglaNegocioException(
-                "El estudiante debe ser mayor de 18 años.");
+            throw new ReglaNegocioException("El estudiante debe ser mayor de 18 años.");
         }
-
-        // Verificar email único (excluyendo el propio)
-        if (!estudiante.getEmail().equalsIgnoreCase(dto.getEmail()) &&
+        if (!e.getEmail().equalsIgnoreCase(dto.getEmail()) &&
                 estudianteRepository.existsByEmailAndIdNot(dto.getEmail(), id)) {
-            throw new ReglaNegocioException(
-                "Ya existe otro estudiante registrado con el email: " + dto.getEmail());
+            throw new ReglaNegocioException("Ya existe otro estudiante con el email: " + dto.getEmail());
         }
 
-        // La cédula NO se puede cambiar una vez registrada
-        mapearDtoAEntidad(dto, estudiante);
-        estudiante.setFechaModificacion(LocalDateTime.now());
+        mapearDtoAEntidad(dto, e);
+        e.setFechaModificacion(LocalDateTime.now());
+        Estudiante actualizado = estudianteRepository.save(e);
 
-        Estudiante actualizado = estudianteRepository.save(estudiante);
+        auditoriaService.registrarExitoso(getUsername(), "MODIFICACION_ESTUDIANTE",
+                "Estudiante", id, "Modificación ID: " + id);
+
         return mapearEntidadADto(actualizado);
     }
 
-    // ===================== RF06 – Baja Lógica de Estudiantes =====================
+    // ===================== RF06 – Baja lógica (RNF05) =====================
 
     @Transactional
     public void darDeBaja(Long id, BajaEstudianteRequestDTO dto) {
-        Estudiante estudiante = estudianteRepository.findByIdAndActivoTrue(id)
+        Estudiante e = estudianteRepository.findByIdAndActivoTrue(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "No se encontró un estudiante activo con ID: " + id));
+                        "Estudiante no encontrado con ID: " + id));
 
-        estudiante.setActivo(false);
-        estudiante.setFechaBaja(LocalDateTime.now());
-        estudiante.setMotivoBaja(dto.getMotivoBaja());
+        e.setActivo(false);
+        e.setFechaBaja(LocalDateTime.now());
+        e.setMotivoBaja(dto.getMotivoBaja());
+        estudianteRepository.save(e);
 
-        estudianteRepository.save(estudiante);
+        auditoriaService.registrarExitoso(getUsername(), "BAJA_ESTUDIANTE",
+                "Estudiante", id,
+                "Baja lógica ID: " + id + " — Motivo: " + dto.getMotivoBaja());
     }
 
-    // ===================== Métodos auxiliares (mapeo DTO <-> Entidad) =====================
+    // ===================== Mapeo DTO ↔ Entidad =====================
 
-    private Estudiante mapearDtoAEntidad(EstudianteRequestDTO dto, Estudiante estudiante) {
-        estudiante.setNombre(dto.getNombre().trim());
-        estudiante.setApellido(dto.getApellido().trim());
-        estudiante.setEmail(dto.getEmail().trim().toLowerCase());
-        estudiante.setFechaNacimiento(dto.getFechaNacimiento());
-        estudiante.setTelefono(dto.getTelefono());
-        estudiante.setDireccion(dto.getDireccion());
-        estudiante.setItr(dto.getItr());
-        estudiante.setCarrera(dto.getCarrera());
-        estudiante.setGrupo(dto.getGrupo());
-        return estudiante;
+    /**
+     * RNF01/RD01 — El campo observacionesConfidenciales solo se persiste
+     * si el usuario tiene ROLE_DIRECCION o ROLE_ADMIN.
+     * informacionSalud solo para ROLE_PSICOPEDAGOGO, ROLE_ADMIN, ROLE_DIRECCION.
+     */
+    private Estudiante mapearDtoAEntidad(EstudianteRequestDTO dto, Estudiante e) {
+        e.setNombre(dto.getNombre().trim());
+        e.setApellido(dto.getApellido().trim());
+        e.setEmail(dto.getEmail().trim().toLowerCase());
+        e.setFechaNacimiento(dto.getFechaNacimiento());
+        e.setTelefono(dto.getTelefono());
+        e.setDireccion(dto.getDireccion());
+        e.setItr(dto.getItr());
+        e.setCarrera(dto.getCarrera());
+        e.setGrupo(dto.getGrupo());
+        e.setSistemaSalud(dto.getSistemaSalud());
+        e.setMotivoDerivacion(dto.getMotivoDerivacion());
+        e.setObservaciones(dto.getObservaciones());
+
+        // RNF01 — solo roles autorizados pueden guardar info de salud
+        if (tieneRol("ROLE_PSICOPEDAGOGO", "ROLE_ADMIN", "ROLE_DIRECCION")) {
+            e.setInformacionSalud(dto.getInformacionSalud());
+        }
+        // RD01 — solo ROLE_DIRECCION y ROLE_ADMIN guardan el campo confidencial
+        if (tieneRol("ROLE_DIRECCION", "ROLE_ADMIN")) {
+            e.setObservacionesConfidenciales(dto.getObservacionesConfidenciales());
+        }
+
+        return e;
     }
 
+    /**
+     * RNF01/RD01 — El DTO de respuesta omite campos sensibles según el rol del solicitante.
+     * @JsonInclude(NON_NULL) en el DTO se encarga de no serializar los campos null.
+     */
     private EstudianteResponseDTO mapearEntidadADto(Estudiante e) {
         EstudianteResponseDTO dto = new EstudianteResponseDTO();
         dto.setId(e.getId());
@@ -172,18 +189,55 @@ public class EstudianteService {
         dto.setItr(e.getItr());
         dto.setCarrera(e.getCarrera());
         dto.setGrupo(e.getGrupo());
+        dto.setSistemaSalud(e.getSistemaSalud());
+        dto.setMotivoDerivacion(e.getMotivoDerivacion());
+        dto.setObservaciones(e.getObservaciones());
         dto.setActivo(e.isActivo());
         dto.setFechaAlta(e.getFechaAlta());
         dto.setFechaModificacion(e.getFechaModificacion());
+
+        // RNF01 — solo roles autorizados ven información de salud
+        if (tieneRol("ROLE_PSICOPEDAGOGO", "ROLE_ADMIN", "ROLE_DIRECCION")) {
+            dto.setInformacionSalud(e.getInformacionSalud());
+        }
+        // RD01 — solo ROLE_DIRECCION y ROLE_ADMIN ven el campo confidencial
+        if (tieneRol("ROLE_DIRECCION", "ROLE_ADMIN")) {
+            dto.setObservacionesConfidenciales(e.getObservacionesConfidenciales());
+        }
+
         return dto;
+    }
+
+    // ===================== Helpers =====================
+
+    private boolean tieneRol(String... roles) {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null) return false;
+            for (String rol : roles) {
+                if (auth.getAuthorities().stream()
+                        .anyMatch(a -> a.getAuthority().equals(rol))) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String getUsername() {
+        try {
+            return SecurityContextHolder.getContext().getAuthentication().getName();
+        } catch (Exception e) {
+            return "sistema";
+        }
     }
 
     private String normalizarCedula(String cedula) {
         if (cedula == null) return null;
         cedula = cedula.replaceAll("[.\\-]", "").trim();
-        if (cedula.length() == 7) {
-            cedula = "0" + cedula;
-        }
+        if (cedula.length() == 7) cedula = "0" + cedula;
         return cedula;
     }
 }

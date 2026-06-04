@@ -1,8 +1,16 @@
 package com.utec.sienep.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+/**
+ * DTO de respuesta de Estudiante.
+ * RNF01/RD01: los campos sensibles (informacionSalud, observacionesConfidenciales)
+ * solo se incluyen en la respuesta cuando el usuario tiene el rol correspondiente.
+ * Se usa @JsonInclude(NON_NULL) para que campos no autorizados simplemente no aparezcan.
+ */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class EstudianteResponseDTO {
 
     private Long id;
@@ -16,11 +24,27 @@ public class EstudianteResponseDTO {
     private String itr;
     private String carrera;
     private String grupo;
+    private String sistemaSalud;
+    private String motivoDerivacion;
+    private String observaciones;
+
+    /**
+     * RNF01 — Solo se incluye para ROLE_PSICOPEDAGOGO, ROLE_ADMIN, ROLE_DIRECCION.
+     * El servicio lo setea en null para otros roles → @JsonInclude lo omite.
+     */
+    private String informacionSalud;
+
+    /**
+     * RD01 — Solo se incluye para ROLE_DIRECCION y ROLE_ADMIN.
+     * El servicio lo setea en null para todos los demás roles.
+     */
+    private String observacionesConfidenciales;
+
     private boolean activo;
     private LocalDateTime fechaAlta;
     private LocalDateTime fechaModificacion;
 
-    // ===================== Getters y Setters =====================
+    // ── Getters y Setters ─────────────────────────────────────────────────────
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -54,6 +78,23 @@ public class EstudianteResponseDTO {
 
     public String getGrupo() { return grupo; }
     public void setGrupo(String grupo) { this.grupo = grupo; }
+
+    public String getSistemaSalud() { return sistemaSalud; }
+    public void setSistemaSalud(String sistemaSalud) { this.sistemaSalud = sistemaSalud; }
+
+    public String getMotivoDerivacion() { return motivoDerivacion; }
+    public void setMotivoDerivacion(String motivoDerivacion) { this.motivoDerivacion = motivoDerivacion; }
+
+    public String getObservaciones() { return observaciones; }
+    public void setObservaciones(String observaciones) { this.observaciones = observaciones; }
+
+    public String getInformacionSalud() { return informacionSalud; }
+    public void setInformacionSalud(String informacionSalud) { this.informacionSalud = informacionSalud; }
+
+    public String getObservacionesConfidenciales() { return observacionesConfidenciales; }
+    public void setObservacionesConfidenciales(String observacionesConfidenciales) {
+        this.observacionesConfidenciales = observacionesConfidenciales;
+    }
 
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }

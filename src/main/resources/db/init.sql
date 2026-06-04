@@ -1,45 +1,296 @@
 -- ============================================================
--- SIENEP — Script de inicialización de base de datos
--- Universidad Tecnológica (UTEC) — 2026
+-- SIENEP — Script DDL Normalizado
+-- Convenciones de nomenclatura:
+-- Tablas: plural, multi-palabra = primeros 4 caracteres + _ + segunda palabra
+-- Columnas: singular, multi-palabra = primeros 3 caracteres + _ + segunda palabra
+-- PK: PK_[ENTIDAD_SINGULAR]  FK: FK_[ABREV_TABLA]_[ABREV_COLUMNA]  UK: UK_[ABREV_TABLA]_[COLUMNA]
 -- ============================================================
 
--- Crear el schema si no existe
 CREATE SCHEMA IF NOT EXISTS proyecto;
 
 -- ============================================================
--- Tabla: estudiantes
--- Entidad principal del módulo de Gestión de Estudiantes (RF05-RF09)
+-- ROLES
 -- ============================================================
-CREATE TABLE IF NOT EXISTS proyecto.estudiantes (
-    id                  BIGSERIAL PRIMARY KEY,
-    cedula              VARCHAR(8)   NOT NULL UNIQUE,
-    nombre              VARCHAR(100) NOT NULL,
-    apellido            VARCHAR(100) NOT NULL,
-    email               VARCHAR(150) NOT NULL UNIQUE,
-    fecha_nacimiento    DATE         NOT NULL,
-    telefono            VARCHAR(20),
-    direccion           VARCHAR(250),
-    itr                 VARCHAR(100),
-    carrera             VARCHAR(150),
-    grupo               VARCHAR(50),
-    activo              BOOLEAN      NOT NULL DEFAULT TRUE,
-    fecha_alta          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    fecha_baja          TIMESTAMP,
-    fecha_modificacion  TIMESTAMP,
-    motivo_baja         VARCHAR(500)
+CREATE TABLE IF NOT EXISTS proyecto.ROLES (
+    PK_ROL      BIGSERIAL   NOT NULL,
+    NOMBRE      VARCHAR(50) NOT NULL,
+    DESCRIPCION VARCHAR(200),
+    CONSTRAINT PK_ROL         PRIMARY KEY (PK_ROL),
+    CONSTRAINT UK_ROLE_NOMBRE UNIQUE (NOMBRE)
 );
 
--- Índices útiles para búsquedas frecuentes
-CREATE INDEX IF NOT EXISTS idx_estudiantes_cedula  ON proyecto.estudiantes (cedula);
-CREATE INDEX IF NOT EXISTS idx_estudiantes_email   ON proyecto.estudiantes (email);
-CREATE INDEX IF NOT EXISTS idx_estudiantes_activo  ON proyecto.estudiantes (activo);
-CREATE INDEX IF NOT EXISTS idx_estudiantes_nombre  ON proyecto.estudiantes (nombre, apellido);
+INSERT INTO proyecto.ROLES (NOMBRE, DESCRIPCION) VALUES
+    ('ROLE_ADMIN','Administrador del sistema'),
+    ('ROLE_DOCENTE','Docente con acceso a estudiantes e instancias'),
+    ('ROLE_PSICOPEDAGOGO','Psicopedagogo con acceso a salud y seguimiento'),
+    ('ROLE_TUTOR','Tutor con acceso limitado a su grupo'),
+    ('ROLE_DIRECCION','Dirección de Educación — acceso a observaciones confidenciales'),
+    ('ROLE_VIEWER','Acceso de solo lectura')
+ON CONFLICT (NOMBRE) DO NOTHING;
 
 -- ============================================================
--- Comentarios de columnas para documentación interna
+-- USUARIOS
 -- ============================================================
-COMMENT ON TABLE  proyecto.estudiantes                    IS 'Registro de estudiantes del sistema SIENEP';
-COMMENT ON COLUMN proyecto.estudiantes.cedula             IS 'Cédula de identidad uruguaya (8 dígitos, con cero adelante si es necesario)';
-COMMENT ON COLUMN proyecto.estudiantes.activo             IS 'TRUE = activo, FALSE = dado de baja lógicamente';
-COMMENT ON COLUMN proyecto.estudiantes.motivo_baja        IS 'Motivo obligatorio al dar de baja lógica (RF06)';
-COMMENT ON COLUMN proyecto.estudiantes.fecha_modificacion IS 'Fecha de la última modificación de datos (RF07)';
+CREATE TABLE IF NOT EXISTS proyecto.USUARIOS (
+    PK_USUARIO  BIGSERIAL    NOT NULL,
+    USERNAME    VARCHAR(100) NOT NULL,
+    PAS_HASH    VARCHAR(255) NOT NULL,
+    NOMBRE      VARCHAR(100) NOT NULL,
+    APELLIDO    VARCHAR(100) NOT NULL,
+    EMAIL       VARCHAR(150) NOT NULL,
+    ACTIVO      BOOLEAN      NOT NULL DEFAULT TRUE,
+    FEC_ALTA    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FEC_BAJA    TIMESTAMP,
+    ULT_LOGIN   TIMESTAMP,
+    INT_FALLIDO INTEGER      NOT NULL DEFAULT 0,
+    BLOQUEADO   BOOLEAN      NOT NULL DEFAULT FALSE,
+    CONSTRAINT PK_USUARIO        PRIMARY KEY (PK_USUARIO),
+    CONSTRAINT UK_USUA_USERNAME  UNIQUE (USERNAME),
+    CONSTRAINT UK_USUA_EMAIL     UNIQUE (EMAIL)
+);
+
+-- ============================================================
+-- USUA_ROLES (USUARIOS + ROLES)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.USUA_ROLES (
+    FK_USUA_USUARIO BIGINT NOT NULL,
+    FK_USUA_ROL     BIGINT NOT NULL,
+    CONSTRAINT PK_USUA_ROL     PRIMARY KEY (FK_USUA_USUARIO, FK_USUA_ROL),
+    CONSTRAINT FK_USUA_USUARIO FOREIGN KEY (FK_USUA_USUARIO) REFERENCES proyecto.USUARIOS(PK_USUARIO),
+    CONSTRAINT FK_USUA_ROL     FOREIGN KEY (FK_USUA_ROL)     REFERENCES proyecto.ROLES(PK_ROL)
+);
+
+-- ============================================================
+-- ESTUDIANTES
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.ESTUDIANTES (
+    PK_ESTUDIANTE    BIGSERIAL    NOT NULL,
+    CEDULA           VARCHAR(8)   NOT NULL,
+    NOMBRE           VARCHAR(100) NOT NULL,
+    APELLIDO         VARCHAR(100) NOT NULL,
+    EMAIL            VARCHAR(150) NOT NULL,
+    FEC_NACIMIENTO   DATE         NOT NULL,
+    TELEFONO         VARCHAR(20),
+    DIRECCION        VARCHAR(250),
+    ITR              VARCHAR(100),
+    CARRERA          VARCHAR(150),
+    GRUPO            VARCHAR(50),
+    SIS_SALUD        VARCHAR(150),
+    MOT_DERIVACION   TEXT,
+    INF_SALUD        TEXT,
+    OBS_CONFIDENCIAL TEXT,
+    OBSERVACION      TEXT,
+    ACTIVO           BOOLEAN      NOT NULL DEFAULT TRUE,
+    FEC_ALTA         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FEC_BAJA         TIMESTAMP,
+    FEC_MODIFICACION TIMESTAMP,
+    MOT_BAJA         VARCHAR(500),
+    CONSTRAINT PK_ESTUDIANTE  PRIMARY KEY (PK_ESTUDIANTE),
+    CONSTRAINT UK_ESTU_CEDULA UNIQUE (CEDULA),
+    CONSTRAINT UK_ESTU_EMAIL  UNIQUE (EMAIL)
+);
+
+-- ============================================================
+-- INFO_MEDICOS (INFORMES MEDICOS)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.INFO_MEDICOS (
+    PK_INFORME         BIGSERIAL    NOT NULL,
+    FK_INFO_ESTUDIANTE BIGINT       NOT NULL,
+    NOM_ARCHIVO        VARCHAR(255) NOT NULL,
+    TIP_ARCHIVO        VARCHAR(100),
+    DESCRIPCION        VARCHAR(500),
+    FEC_CARGA          TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FK_INFO_CARGADO    BIGINT,
+    ACTIVO             BOOLEAN      NOT NULL DEFAULT TRUE,
+    CONSTRAINT PK_INFORME         PRIMARY KEY (PK_INFORME),
+    CONSTRAINT FK_INFO_ESTUDIANTE FOREIGN KEY (FK_INFO_ESTUDIANTE) REFERENCES proyecto.ESTUDIANTES(PK_ESTUDIANTE),
+    CONSTRAINT FK_INFO_CARGADO    FOREIGN KEY (FK_INFO_CARGADO)    REFERENCES proyecto.USUARIOS(PK_USUARIO)
+);
+
+-- ============================================================
+-- CATE_INSTANCIAS (CATEGORIAS INSTANCIAS)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.CATE_INSTANCIAS (
+    PK_CATE_INST BIGSERIAL    NOT NULL,
+    NOMBRE       VARCHAR(100) NOT NULL,
+    DESCRIPCION  VARCHAR(300),
+    ACTIVO       BOOLEAN      NOT NULL DEFAULT TRUE,
+    CONSTRAINT PK_CATE_INST   PRIMARY KEY (PK_CATE_INST),
+    CONSTRAINT UK_CATI_NOMBRE UNIQUE (NOMBRE)
+);
+
+INSERT INTO proyecto.CATE_INSTANCIAS (NOMBRE, DESCRIPCION) VALUES
+    ('Tutoria','Sesión de tutoría académica'),
+    ('Seguimiento','Seguimiento periódico del estudiante'),
+    ('Evaluacion','Evaluación o revisión de situación académica'),
+    ('Apoyo','Sesión de apoyo pedagógico o psicológico'),
+    ('Administrativa','Gestión administrativa'),
+    ('Reunion','Reunión con familia o responsables'),
+    ('Llamada','Contacto telefónico')
+ON CONFLICT (NOMBRE) DO NOTHING;
+
+-- ============================================================
+-- INSTANCIAS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.INSTANCIAS (
+    PK_INSTANCIA       BIGSERIAL    NOT NULL,
+    IDENTIFICADOR      VARCHAR(20)  NOT NULL,
+    FK_INST_ESTUDIANTE BIGINT       NOT NULL,
+    FK_INST_CATEGORIA  BIGINT,
+    TITULO             VARCHAR(200) NOT NULL,
+    DESCRIPCION        TEXT,
+    NOT_CONFIDENCIAL   TEXT,
+    FEC_INSTANCIA      TIMESTAMP    NOT NULL,
+    DUR_MINUTO         INTEGER,
+    LUGAR              VARCHAR(200),
+    CANAL              VARCHAR(100),
+    PARTICIPANTE       VARCHAR(500),
+    ESTADO             VARCHAR(50)  NOT NULL DEFAULT 'PROGRAMADA',
+    GOO_CALENDAR       VARCHAR(255),
+    ACTIVO             BOOLEAN      NOT NULL DEFAULT TRUE,
+    FEC_ALTA           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FEC_MODIFICACION   TIMESTAMP,
+    FK_INST_CREADO     BIGINT,
+    FK_INST_ORIGEN     BIGINT,
+    CONSTRAINT PK_INSTANCIA          PRIMARY KEY (PK_INSTANCIA),
+    CONSTRAINT UK_INST_IDENTIFICADOR UNIQUE (IDENTIFICADOR),
+    CONSTRAINT FK_INST_ESTUDIANTE    FOREIGN KEY (FK_INST_ESTUDIANTE) REFERENCES proyecto.ESTUDIANTES(PK_ESTUDIANTE),
+    CONSTRAINT FK_INST_CATEGORIA     FOREIGN KEY (FK_INST_CATEGORIA)  REFERENCES proyecto.CATE_INSTANCIAS(PK_CATE_INST),
+    CONSTRAINT FK_INST_CREADO        FOREIGN KEY (FK_INST_CREADO)     REFERENCES proyecto.USUARIOS(PK_USUARIO),
+    CONSTRAINT FK_INST_ORIGEN        FOREIGN KEY (FK_INST_ORIGEN)     REFERENCES proyecto.INSTANCIAS(PK_INSTANCIA)
+);
+
+-- ============================================================
+-- CATE_RECORDATORIOS (CATEGORIAS RECORDATORIOS)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.CATE_RECORDATORIOS (
+    PK_CATE_RECO BIGSERIAL    NOT NULL,
+    NOMBRE       VARCHAR(100) NOT NULL,
+    DESCRIPCION  VARCHAR(300),
+    ACTIVO       BOOLEAN      NOT NULL DEFAULT TRUE,
+    CONSTRAINT PK_CATE_RECO   PRIMARY KEY (PK_CATE_RECO),
+    CONSTRAINT UK_CATR_NOMBRE UNIQUE (NOMBRE)
+);
+
+INSERT INTO proyecto.CATE_RECORDATORIOS (NOMBRE, DESCRIPCION) VALUES
+    ('Vencimiento','Fechas de vencimiento académico'),
+    ('Reunion','Convocatoria a reunión o entrevista'),
+    ('Seguimiento','Seguimiento periódico'),
+    ('Documentacion','Entrega o renovación de documentación'),
+    ('Evaluacion','Evaluación o examen'),
+    ('Derivacion','Derivación externa')
+ON CONFLICT (NOMBRE) DO NOTHING;
+
+-- ============================================================
+-- RECORDATORIOS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.RECORDATORIOS (
+    PK_RECORDATORIO    BIGSERIAL    NOT NULL,
+    IDENTIFICADOR      VARCHAR(20)  NOT NULL,
+    FK_RECO_ESTUDIANTE BIGINT       NOT NULL,
+    FK_RECO_CATEGORIA  BIGINT,
+    TITULO             VARCHAR(200) NOT NULL,
+    DESCRIPCION        TEXT,
+    FEC_RECORDATORIO   TIMESTAMP    NOT NULL,
+    ES_RECURRENTE      BOOLEAN      NOT NULL DEFAULT FALSE,
+    FRE_RECURRENCIA    VARCHAR(20),
+    FEC_FIN            TIMESTAMP,
+    TIPO               VARCHAR(50)  NOT NULL DEFAULT 'GENERAL',
+    GOO_CALENDAR       VARCHAR(255),
+    NOT_ENVIADA        BOOLEAN      NOT NULL DEFAULT FALSE,
+    FEC_NOTIFICACION   TIMESTAMP,
+    ESTADO             VARCHAR(50)  NOT NULL DEFAULT 'PENDIENTE',
+    ACTIVO             BOOLEAN      NOT NULL DEFAULT TRUE,
+    FEC_ALTA           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FEC_MODIFICACION   TIMESTAMP,
+    FK_RECO_CREADO     BIGINT,
+    FK_RECO_INSTANCIA  BIGINT,
+    FK_RECO_PADRE      BIGINT,
+    CONSTRAINT PK_RECORDATORIO         PRIMARY KEY (PK_RECORDATORIO),
+    CONSTRAINT UK_RECO_IDENTIFICADOR   UNIQUE (IDENTIFICADOR),
+    CONSTRAINT FK_RECO_ESTUDIANTE      FOREIGN KEY (FK_RECO_ESTUDIANTE) REFERENCES proyecto.ESTUDIANTES(PK_ESTUDIANTE),
+    CONSTRAINT FK_RECO_CATEGORIA       FOREIGN KEY (FK_RECO_CATEGORIA)  REFERENCES proyecto.CATE_RECORDATORIOS(PK_CATE_RECO),
+    CONSTRAINT FK_RECO_CREADO          FOREIGN KEY (FK_RECO_CREADO)     REFERENCES proyecto.USUARIOS(PK_USUARIO),
+    CONSTRAINT FK_RECO_INSTANCIA       FOREIGN KEY (FK_RECO_INSTANCIA)  REFERENCES proyecto.INSTANCIAS(PK_INSTANCIA),
+    CONSTRAINT FK_RECO_PADRE           FOREIGN KEY (FK_RECO_PADRE)      REFERENCES proyecto.RECORDATORIOS(PK_RECORDATORIO)
+);
+
+-- ============================================================
+-- INCIDENCIAS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.INCIDENCIAS (
+    PK_INCIDENCIA      BIGSERIAL    NOT NULL,
+    FK_INCI_ESTUDIANTE BIGINT       NOT NULL,
+    FK_INCI_INSTANCIA  BIGINT,
+    TITULO             VARCHAR(200) NOT NULL,
+    DESCRIPCION        TEXT         NOT NULL,
+    LUGAR              VARCHAR(200),
+    PER_INVOLUCRADA    TEXT,
+    TIPO               VARCHAR(100),
+    SEVERIDAD          VARCHAR(50)  NOT NULL DEFAULT 'MEDIA',
+    ESTADO             VARCHAR(50)  NOT NULL DEFAULT 'ABIERTA',
+    FEC_INCIDENCIA     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FEC_CIERRE         TIMESTAMP,
+    RESOLUCION         TEXT,
+    FK_INCI_REGISTRADO BIGINT,
+    ACTIVO             BOOLEAN      NOT NULL DEFAULT TRUE,
+    FEC_ALTA           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FEC_MODIFICACION   TIMESTAMP,
+    CONSTRAINT PK_INCIDENCIA       PRIMARY KEY (PK_INCIDENCIA),
+    CONSTRAINT FK_INCI_ESTUDIANTE  FOREIGN KEY (FK_INCI_ESTUDIANTE)  REFERENCES proyecto.ESTUDIANTES(PK_ESTUDIANTE),
+    CONSTRAINT FK_INCI_INSTANCIA   FOREIGN KEY (FK_INCI_INSTANCIA)   REFERENCES proyecto.INSTANCIAS(PK_INSTANCIA),
+    CONSTRAINT FK_INCI_REGISTRADO  FOREIGN KEY (FK_INCI_REGISTRADO)  REFERENCES proyecto.USUARIOS(PK_USUARIO)
+);
+
+-- ============================================================
+-- AUDITORIAS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.AUDITORIAS (
+    PK_AUDITORIA    BIGSERIAL    NOT NULL,
+    FK_AUDI_USUARIO BIGINT,
+    USERNAME        VARCHAR(100),
+    ACCION          VARCHAR(100) NOT NULL,
+    ENTIDAD         VARCHAR(100),
+    ENT_ID          BIGINT,
+    DETALLE         TEXT,
+    IP_ORIGEN       VARCHAR(45),
+    FEC_HORA        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    RESULTADO       VARCHAR(20)  NOT NULL DEFAULT 'EXITOSO',
+    CONSTRAINT PK_AUDITORIA    PRIMARY KEY (PK_AUDITORIA),
+    CONSTRAINT FK_AUDI_USUARIO FOREIGN KEY (FK_AUDI_USUARIO) REFERENCES proyecto.USUARIOS(PK_USUARIO)
+);
+
+-- ============================================================
+-- NOTIFICACIONES
+-- ============================================================
+CREATE TABLE IF NOT EXISTS proyecto.NOTIFICACIONES (
+    PK_NOTIFICACION BIGSERIAL    NOT NULL,
+    DESTINATARIO    VARCHAR(150) NOT NULL,
+    ASUNTO          VARCHAR(300),
+    CUERPO          TEXT,
+    CANAL           VARCHAR(50)  NOT NULL DEFAULT 'EMAIL',
+    ESTADO          VARCHAR(20)  NOT NULL DEFAULT 'PENDIENTE',
+    INTENTO         INTEGER      NOT NULL DEFAULT 0,
+    FEC_ENVIO       TIMESTAMP,
+    FEC_CREACION    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    REF_TIPO        VARCHAR(50),
+    REF_ID          BIGINT,
+    CONSTRAINT PK_NOTIFICACION PRIMARY KEY (PK_NOTIFICACION)
+);
+
+-- ============================================================
+-- ÍNDICES
+-- ============================================================
+CREATE INDEX IF NOT EXISTS IDX_ESTU_CEDULA ON proyecto.ESTUDIANTES    (CEDULA);
+CREATE INDEX IF NOT EXISTS IDX_ESTU_ACTIVO ON proyecto.ESTUDIANTES    (ACTIVO);
+CREATE INDEX IF NOT EXISTS IDX_ESTU_NOMBRE ON proyecto.ESTUDIANTES    (NOMBRE, APELLIDO);
+CREATE INDEX IF NOT EXISTS IDX_INST_ESTUDI ON proyecto.INSTANCIAS     (FK_INST_ESTUDIANTE);
+CREATE INDEX IF NOT EXISTS IDX_INST_IDENT  ON proyecto.INSTANCIAS     (IDENTIFICADOR);
+CREATE INDEX IF NOT EXISTS IDX_RECO_ESTUDI ON proyecto.RECORDATORIOS  (FK_RECO_ESTUDIANTE);
+CREATE INDEX IF NOT EXISTS IDX_RECO_FECHA  ON proyecto.RECORDATORIOS  (FEC_RECORDATORIO);
+CREATE INDEX IF NOT EXISTS IDX_RECO_ESTADO ON proyecto.RECORDATORIOS  (ESTADO);
+CREATE INDEX IF NOT EXISTS IDX_INCI_ESTUDI ON proyecto.INCIDENCIAS    (FK_INCI_ESTUDIANTE);
+CREATE INDEX IF NOT EXISTS IDX_INCI_ESTADO ON proyecto.INCIDENCIAS    (ESTADO);
+CREATE INDEX IF NOT EXISTS IDX_AUDI_USUA   ON proyecto.AUDITORIAS     (FK_AUDI_USUARIO);
+CREATE INDEX IF NOT EXISTS IDX_AUDI_FECHA  ON proyecto.AUDITORIAS     (FEC_HORA);
+CREATE INDEX IF NOT EXISTS IDX_NOTI_ESTADO ON proyecto.NOTIFICACIONES (ESTADO);

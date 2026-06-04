@@ -14,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -31,18 +34,30 @@ class EstudianteServiceTest {
     @Mock
     private EstudianteRepository estudianteRepository;
 
+    // Necesario porque EstudianteService recibe AuditoriaService en su constructor
+    @Mock
+    private AuditoriaService auditoriaService;
+
     @InjectMocks
     private EstudianteService estudianteService;
 
     private EstudianteRequestDTO dtoValido;
     private Estudiante estudianteExistente;
 
-    // Cédula uruguaya real con dígito verificador correcto: 12345670
+    // Cédula uruguaya válida con dígito verificador correcto
     private static final String CEDULA_VALIDA = "12345670";
     private static final LocalDate FECHA_MAYOR = LocalDate.now().minusYears(20);
 
     @BeforeEach
     void setUp() {
+        // Mock del SecurityContext para que getUsername() no falle
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        when(auth.getAuthorities()).thenReturn(List.of());
+        SecurityContext secCtx = mock(SecurityContext.class);
+        when(secCtx.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(secCtx);
+
         dtoValido = new EstudianteRequestDTO();
         dtoValido.setCedula(CEDULA_VALIDA);
         dtoValido.setNombre("Juan");
@@ -66,7 +81,7 @@ class EstudianteServiceTest {
     // ===================== Alta (RF05) =====================
 
     @Test
-    @DisplayName("Crear estudiante con datos válidos debe retornar DTO")
+    @DisplayName("Crear estudiante con datos válidos retorna DTO")
     void crear_estudiante_valido_retorna_dto() {
         when(estudianteRepository.existsByCedula(anyString())).thenReturn(false);
         when(estudianteRepository.existsByEmail(anyString())).thenReturn(false);
@@ -77,19 +92,21 @@ class EstudianteServiceTest {
         assertNotNull(resultado);
         assertEquals(CEDULA_VALIDA, resultado.getCedula());
         verify(estudianteRepository, times(1)).save(any(Estudiante.class));
+        verify(auditoriaService, times(1)).registrarExitoso(
+                anyString(), eq("ALTA_ESTUDIANTE"), anyString(), anyLong(), anyString());
     }
 
     @Test
-    @DisplayName("Crear estudiante con cédula inválida debe lanzar ReglaNegocioException")
+    @DisplayName("Crear estudiante con cédula inválida lanza ReglaNegocioException")
     void crear_cedula_invalida_lanza_excepcion() {
-        dtoValido.setCedula("12345671"); // dígito verificador incorrecto
+        dtoValido.setCedula("12345671");
 
         assertThrows(ReglaNegocioException.class, () -> estudianteService.crear(dtoValido));
         verify(estudianteRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Crear estudiante menor de 18 años debe lanzar ReglaNegocioException")
+    @DisplayName("Crear estudiante menor de 18 años lanza ReglaNegocioException")
     void crear_menor_de_edad_lanza_excepcion() {
         dtoValido.setFechaNacimiento(LocalDate.now().minusYears(16));
 
@@ -98,7 +115,7 @@ class EstudianteServiceTest {
     }
 
     @Test
-    @DisplayName("Crear estudiante con cédula duplicada debe lanzar ReglaNegocioException")
+    @DisplayName("Crear estudiante con cédula duplicada lanza ReglaNegocioException")
     void crear_cedula_duplicada_lanza_excepcion() {
         when(estudianteRepository.existsByCedula(anyString())).thenReturn(true);
 
@@ -107,7 +124,7 @@ class EstudianteServiceTest {
     }
 
     @Test
-    @DisplayName("Crear estudiante con email duplicado debe lanzar ReglaNegocioException")
+    @DisplayName("Crear estudiante con email duplicado lanza ReglaNegocioException")
     void crear_email_duplicado_lanza_excepcion() {
         when(estudianteRepository.existsByCedula(anyString())).thenReturn(false);
         when(estudianteRepository.existsByEmail(anyString())).thenReturn(true);
@@ -119,7 +136,7 @@ class EstudianteServiceTest {
     // ===================== Búsqueda (RF08) =====================
 
     @Test
-    @DisplayName("Listar activos debe retornar lista con estudiantes activos")
+    @DisplayName("Listar activos retorna lista correcta")
     void listar_activos_retorna_lista() {
         when(estudianteRepository.findByActivoTrue()).thenReturn(List.of(estudianteExistente));
 
@@ -130,9 +147,10 @@ class EstudianteServiceTest {
     }
 
     @Test
-    @DisplayName("Buscar por ID existente debe retornar el estudiante")
+    @DisplayName("Buscar por ID existente retorna el estudiante")
     void buscar_por_id_existente_retorna_dto() {
-        when(estudianteRepository.findByIdAndActivoTrue(1L)).thenReturn(Optional.of(estudianteExistente));
+        when(estudianteRepository.findByIdAndActivoTrue(1L))
+                .thenReturn(Optional.of(estudianteExistente));
 
         EstudianteResponseDTO resultado = estudianteService.buscarPorId(1L);
 
@@ -141,36 +159,43 @@ class EstudianteServiceTest {
     }
 
     @Test
-    @DisplayName("Buscar por ID inexistente debe lanzar RecursoNoEncontradoException")
+    @DisplayName("Buscar por ID inexistente lanza RecursoNoEncontradoException")
     void buscar_por_id_inexistente_lanza_excepcion() {
         when(estudianteRepository.findByIdAndActivoTrue(99L)).thenReturn(Optional.empty());
 
-        assertThrows(RecursoNoEncontradoException.class, () -> estudianteService.buscarPorId(99L));
+        assertThrows(RecursoNoEncontradoException.class,
+                () -> estudianteService.buscarPorId(99L));
     }
 
-    // ===================== Baja Lógica (RF06) =====================
+    // ===================== Baja lógica (RF06, RNF05) =====================
 
     @Test
-    @DisplayName("Dar de baja un estudiante activo debe marcarlo como inactivo")
+    @DisplayName("Baja lógica de estudiante activo lo desactiva y registra auditoría")
     void dar_de_baja_activo_lo_desactiva() {
-        when(estudianteRepository.findByIdAndActivoTrue(1L)).thenReturn(Optional.of(estudianteExistente));
-        when(estudianteRepository.save(any(Estudiante.class))).thenReturn(estudianteExistente);
+        when(estudianteRepository.findByIdAndActivoTrue(1L))
+                .thenReturn(Optional.of(estudianteExistente));
+        when(estudianteRepository.save(any(Estudiante.class)))
+                .thenReturn(estudianteExistente);
 
         BajaEstudianteRequestDTO bajaDto = new BajaEstudianteRequestDTO();
         bajaDto.setMotivoBaja("Egresado");
 
         assertDoesNotThrow(() -> estudianteService.darDeBaja(1L, bajaDto));
-        verify(estudianteRepository, times(1)).save(argThat(e -> !e.isActivo()));
+        verify(estudianteRepository).save(argThat(e ->
+                !e.isActivo() && e.getMotivoBaja().equals("Egresado")));
+        verify(auditoriaService).registrarExitoso(
+                anyString(), eq("BAJA_ESTUDIANTE"), anyString(), anyLong(), anyString());
     }
 
     @Test
-    @DisplayName("Dar de baja un estudiante inexistente debe lanzar excepción")
+    @DisplayName("Baja lógica de estudiante inexistente lanza excepción")
     void dar_de_baja_inexistente_lanza_excepcion() {
         when(estudianteRepository.findByIdAndActivoTrue(99L)).thenReturn(Optional.empty());
 
         BajaEstudianteRequestDTO bajaDto = new BajaEstudianteRequestDTO();
         bajaDto.setMotivoBaja("Test");
 
-        assertThrows(RecursoNoEncontradoException.class, () -> estudianteService.darDeBaja(99L, bajaDto));
+        assertThrows(RecursoNoEncontradoException.class,
+                () -> estudianteService.darDeBaja(99L, bajaDto));
     }
 }
