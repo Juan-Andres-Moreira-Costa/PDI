@@ -4,12 +4,15 @@ import com.utec.sienep.dto.response.ApiResponseDTO;
 import com.utec.sienep.entity.Rol;
 import com.utec.sienep.entity.Usuario;
 import com.utec.sienep.service.AdminService;
+import com.utec.sienep.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,48 +25,41 @@ import java.util.List;
 public class AdminController {
 
     private final AdminService adminService;
+    private final AuthService authService;
 
-    public AdminController(AdminService adminService) {
+    public AdminController(AdminService adminService, AuthService authService) {
         this.adminService = adminService;
+        this.authService = authService;
     }
 
-    // RF32-RF33 – Listar roles preexistentes y personalizados
+    // RF32-RF33 — Listar roles
     @GetMapping("/roles")
-    @Operation(summary = "Listar todos los roles (RF32-RF33)",
-        description = "Retorna todos los roles del sistema, incluyendo los preexistentes " +
-                      "(ROLE_ADMIN, ROLE_DOCENTE, ROLE_VIEWER) y los personalizados.")
+    @Operation(summary = "Listar todos los roles (RF32-RF33)")
     public ResponseEntity<ApiResponseDTO<List<Rol>>> listarRoles() {
-        return ResponseEntity.ok(
-                ApiResponseDTO.ok("Roles del sistema.", adminService.listarRoles()));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Roles del sistema.", adminService.listarRoles()));
     }
 
-    // RF34 – Crear rol personalizado
+    // RF34 — Crear rol personalizado
     @PostMapping("/roles")
-    @Operation(summary = "Crear rol personalizado (RF34)",
-        description = "Crea un nuevo rol personalizado. " +
-                      "El nombre se normaliza automáticamente con prefijo ROLE_.")
+    @Operation(summary = "Crear rol personalizado (RF34)")
     public ResponseEntity<ApiResponseDTO<Rol>> crearRol(
             @RequestParam String nombre,
             @RequestParam(required = false) String descripcion) {
-        Rol creado = adminService.crearRol(nombre, descripcion);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponseDTO.ok("Rol creado.", creado));
+                .body(ApiResponseDTO.ok("Rol creado.", adminService.crearRol(nombre, descripcion)));
     }
 
     // Listar usuarios
     @GetMapping("/usuarios")
     @Operation(summary = "Listar usuarios del sistema",
-        description = "Solo accesible para ADMIN. " +
-                      "La respuesta nunca incluye contraseñas ni hashes.")
+        description = "La respuesta nunca incluye contraseñas ni hashes.")
     public ResponseEntity<ApiResponseDTO<List<Usuario>>> listarUsuarios() {
-        return ResponseEntity.ok(
-                ApiResponseDTO.ok("Usuarios del sistema.", adminService.listarUsuarios()));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Usuarios del sistema.", adminService.listarUsuarios()));
     }
 
     // Asignar rol a usuario
     @PostMapping("/usuarios/{usuarioId}/roles/{rolId}")
-    @Operation(summary = "Asignar rol a usuario",
-        description = "Asigna un rol existente a un usuario del sistema.")
+    @Operation(summary = "Asignar rol a usuario")
     public ResponseEntity<ApiResponseDTO<Void>> asignarRol(
             @PathVariable Long usuarioId,
             @PathVariable Long rolId) {
@@ -73,13 +69,22 @@ public class AdminController {
 
     // Quitar rol a usuario
     @DeleteMapping("/usuarios/{usuarioId}/roles/{rolId}")
-    @Operation(summary = "Quitar rol a usuario",
-        description = "Quita un rol a un usuario. " +
-                      "No se puede quitar el único rol asignado.")
+    @Operation(summary = "Quitar rol a usuario")
     public ResponseEntity<ApiResponseDTO<Void>> quitarRol(
             @PathVariable Long usuarioId,
             @PathVariable Long rolId) {
         adminService.quitarRol(usuarioId, rolId);
         return ResponseEntity.ok(ApiResponseDTO.ok("Rol quitado correctamente."));
+    }
+
+    // RF02 — Desbloquear usuario bloqueado por intentos fallidos
+    @PutMapping("/usuarios/{usuarioId}/desbloquear")
+    @Operation(summary = "Desbloquear usuario (RF02)",
+        description = "Desbloquea una cuenta que fue bloqueada por exceder el máximo de intentos fallidos.")
+    public ResponseEntity<ApiResponseDTO<Void>> desbloquear(
+            @PathVariable Long usuarioId,
+            @AuthenticationPrincipal UserDetails admin) {
+        authService.desbloquearUsuario(usuarioId, admin.getUsername());
+        return ResponseEntity.ok(ApiResponseDTO.ok("Usuario desbloqueado correctamente."));
     }
 }

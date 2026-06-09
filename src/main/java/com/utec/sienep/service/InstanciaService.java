@@ -23,17 +23,20 @@ public class InstanciaService {
     private final CategoriaInstanciaRepository categoriaRepository;
     private final UsuarioRepository usuarioRepository;
     private final AuditoriaService auditoriaService;
+    private final NotificacionService notificacionService;
 
     public InstanciaService(InstanciaRepository instanciaRepository,
                             EstudianteRepository estudianteRepository,
                             CategoriaInstanciaRepository categoriaRepository,
                             UsuarioRepository usuarioRepository,
-                            AuditoriaService auditoriaService) {
+                            AuditoriaService auditoriaService,
+                            NotificacionService notificacionService) {
         this.instanciaRepository = instanciaRepository;
         this.estudianteRepository = estudianteRepository;
         this.categoriaRepository = categoriaRepository;
         this.usuarioRepository = usuarioRepository;
         this.auditoriaService = auditoriaService;
+        this.notificacionService = notificacionService;
     }
 
     // ===================== RF10 – Registro de Instancias =====================
@@ -42,11 +45,11 @@ public class InstanciaService {
     public InstanciaResponseDTO crear(InstanciaRequestDTO dto) {
         Estudiante estudiante = estudianteRepository.findByIdAndActivoTrue(dto.getEstudianteId())
                 .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "No se encontró un estudiante activo con ID: " + dto.getEstudianteId()));
+                        "Estudiante no encontrado con ID: " + dto.getEstudianteId()));
 
         Instancia instancia = new Instancia();
         instancia.setEstudiante(estudiante);
-        instancia.setIdentificador(generarIdentificador()); // RF14
+        instancia.setIdentificador(generarIdentificador());
         instancia.setTitulo(dto.getTitulo());
         instancia.setDescripcion(dto.getDescripcion());
         instancia.setFechaInstancia(dto.getFechaInstancia());
@@ -56,7 +59,6 @@ public class InstanciaService {
         instancia.setActivo(true);
         instancia.setFechaAlta(LocalDateTime.now());
 
-        // RF11 – Categorizar instancia
         if (dto.getCategoriaId() != null) {
             CategoriaInstancia cat = categoriaRepository.findById(dto.getCategoriaId())
                     .orElseThrow(() -> new RecursoNoEncontradoException(
@@ -64,9 +66,7 @@ public class InstanciaService {
             instancia.setCategoria(cat);
         }
 
-        // Asignar usuario que la crea
-        String username = SecurityContextHolder.getContext()
-                .getAuthentication().getName();
+        String username = getUsername();
         usuarioRepository.findByUsernameAndActivoTrue(username)
                 .ifPresent(instancia::setCreadoPor);
 
@@ -76,10 +76,19 @@ public class InstanciaService {
                 "Instancia", guardada.getId(),
                 "Instancia " + guardada.getIdentificador() + " creada para estudiante ID " + dto.getEstudianteId());
 
+        // RF15 – Notificación del ID al creador
+        usuarioRepository.findByUsernameAndActivoTrue(username).ifPresent(u -> {
+            notificacionService.notificarIdInstancia(
+                    u.getEmail(),
+                    guardada.getIdentificador(),
+                    guardada.getTitulo(),
+                    estudiante.getNombre() + " " + estudiante.getApellido());
+        });
+
         return mapearEntidadADto(guardada);
     }
 
-    // ===================== RF12 – Visualización de Instancias =====================
+    // ===================== RF12 – Visualización =====================
 
     @Transactional(readOnly = true)
     public List<InstanciaResponseDTO> listarTodas() {
@@ -106,7 +115,7 @@ public class InstanciaService {
                                 "Instancia no encontrada con ID: " + id)));
     }
 
-    // ===================== RF16 – Gestión de Instancias (modificar) =====================
+    // ===================== RF16 – Modificar =====================
 
     @Transactional
     public InstanciaResponseDTO modificar(Long id, InstanciaRequestDTO dto) {
@@ -128,14 +137,14 @@ public class InstanciaService {
             instancia.setCategoria(cat);
         }
 
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        String username = getUsername();
         auditoriaService.registrarExitoso(username, "MODIFICACION_INSTANCIA",
                 "Instancia", id, "Instancia " + instancia.getIdentificador() + " modificada");
 
         return mapearEntidadADto(instanciaRepository.save(instancia));
     }
 
-    // ===================== RF16 – Baja lógica de instancia =====================
+    // ===================== RF16 – Baja lógica =====================
 
     @Transactional
     public void darDeBaja(Long id) {
@@ -147,12 +156,12 @@ public class InstanciaService {
         instancia.setEstado("CANCELADA");
         instanciaRepository.save(instancia);
 
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        String username = getUsername();
         auditoriaService.registrarExitoso(username, "BAJA_INSTANCIA",
                 "Instancia", id, "Instancia " + instancia.getIdentificador() + " cancelada");
     }
 
-    // ===================== RF17 – Clonación de Instancias =====================
+    // ===================== RF17 – Clonación =====================
 
     @Transactional
     public InstanciaResponseDTO clonar(Long id, LocalDateTime nuevaFecha) {
@@ -174,7 +183,7 @@ public class InstanciaService {
         clon.setIdentificador(generarIdentificador());
         clon.setInstanciaOrigen(origen);
 
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        String username = getUsername();
         usuarioRepository.findByUsernameAndActivoTrue(username).ifPresent(clon::setCreadoPor);
 
         Instancia guardado = instanciaRepository.save(clon);
@@ -186,8 +195,8 @@ public class InstanciaService {
         return mapearEntidadADto(guardado);
     }
 
-    // ===================== RF14 – Generación de Identificador =====================
-    // Formato: INST-YYYYMMDD-XXXX (ej: INST-20260530-0001)
+    // ===================== RF14 – Identificador automático =====================
+    // Formato: INST-YYYYMMDD-XXXX
 
     private String generarIdentificador() {
         String fecha = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
@@ -196,7 +205,7 @@ public class InstanciaService {
         return prefijo + String.format("%04d", count + 1);
     }
 
-    // ===================== Mapeo entidad → DTO =====================
+    // ===================== Mapeo =====================
 
     private InstanciaResponseDTO mapearEntidadADto(Instancia i) {
         InstanciaResponseDTO dto = new InstanciaResponseDTO();
@@ -222,5 +231,13 @@ public class InstanciaService {
         if (i.getCreadoPor() != null) dto.setCreadoPorUsername(i.getCreadoPor().getUsername());
         if (i.getInstanciaOrigen() != null) dto.setInstanciaOrigenId(i.getInstanciaOrigen().getId());
         return dto;
+    }
+
+    private String getUsername() {
+        try {
+            return SecurityContextHolder.getContext().getAuthentication().getName();
+        } catch (Exception e) {
+            return "sistema";
+        }
     }
 }

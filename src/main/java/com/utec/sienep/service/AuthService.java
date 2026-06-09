@@ -1,5 +1,6 @@
 package com.utec.sienep.service;
 
+import com.utec.sienep.dto.request.ChangePasswordRequestDTO;
 import com.utec.sienep.dto.request.LoginRequestDTO;
 import com.utec.sienep.dto.response.LoginResponseDTO;
 import com.utec.sienep.entity.Usuario;
@@ -20,6 +21,8 @@ import java.util.List;
 
 @Service
 public class AuthService {
+
+    private static final int MAX_INTENTOS = 5;
 
     private final AuthenticationManager authenticationManager;
     private final UserDetailsService userDetailsService;
@@ -46,31 +49,51 @@ public class AuthService {
 
     @Transactional
     public LoginResponseDTO login(LoginRequestDTO dto) {
+
+        // Verificar si el usuario existe y está bloqueado ANTES de intentar autenticar
+        usuarioRepository.findByUsernameAndActivoTrue(dto.getUsername()).ifPresent(u -> {
+            if (u.isBloqueado()) {
+                auditoriaService.registrarFallido(dto.getUsername(), "LOGIN",
+                        "Intento de login en cuenta bloqueada");
+                throw new ReglaNegocioException(
+                        "La cuenta está bloqueada por demasiados intentos fallidos. " +
+                        "Contacte al administrador.");
+            }
+        });
+
         try {
-            // Spring Security valida username + password contra la BD
             authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                     dto.getUsername(), dto.getPassword()));
 
         } catch (BadCredentialsException e) {
-            // Auditar intento fallido sin exponer detalles del error
-            auditoriaService.registrarFallido(
-                dto.getUsername(), "LOGIN", "Intento de login fallido");
+            // RF02 – Registrar intento fallido e incrementar contador
+            usuarioRepository.findByUsernameAndActivoTrue(dto.getUsername()).ifPresent(u -> {
+                int intentos = u.getIntentosFallidos() + 1;
+                u.setIntentosFallidos(intentos);
+                if (intentos >= MAX_INTENTOS) {
+                    u.setBloqueado(true);
+                }
+                usuarioRepository.save(u);
+            });
+            auditoriaService.registrarFallido(dto.getUsername(), "LOGIN",
+                    "Credenciales inválidas");
             throw new ReglaNegocioException("Credenciales inválidas.");
         }
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(dto.getUsername());
         String token = jwtUtil.generarToken(userDetails);
 
-        // Actualizar último login
+        // Resetear intentos fallidos y actualizar último login
         usuarioRepository.findByUsernameAndActivoTrue(dto.getUsername()).ifPresent(u -> {
+            u.setIntentosFallidos(0);
+            u.setBloqueado(false);
             u.setUltimoLogin(LocalDateTime.now());
             usuarioRepository.save(u);
         });
 
-        // Auditar login exitoso
-        auditoriaService.registrarExitoso(
-            dto.getUsername(), "LOGIN", "Usuario", null, "Login exitoso");
+        auditoriaService.registrarExitoso(dto.getUsername(), "LOGIN",
+                "Usuario", null, "Login exitoso");
 
         Usuario usuario = usuarioRepository.findByUsernameAndActivoTrue(dto.getUsername())
                 .orElseThrow();
@@ -78,51 +101,51 @@ public class AuthService {
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(a -> a.getAuthority()).toList();
 
-        // La respuesta NUNCA incluye la contraseña
-        return new LoginResponseDTO(
-            token,
-            usuario.getUsername(),
-            usuario.getNombre(),
-            usuario.getApellido(),
-            roles
-        );
+        return new LoginResponseDTO(token, usuario.getUsername(),
+                usuario.getNombre(), usuario.getApellido(), roles);
     }
 
     // ===================== RF04 – Cierre de Sesión =====================
-    // JWT es stateless: el cierre de sesión se maneja en el cliente eliminando el token.
-    // En el servidor registramos el evento de auditoría.
 
     @Transactional
     public void logout(String username) {
-        auditoriaService.registrarExitoso(
-            username, "LOGOUT", "Usuario", null, "Cierre de sesión registrado");
+        auditoriaService.registrarExitoso(username, "LOGOUT",
+                "Usuario", null, "Cierre de sesión registrado");
     }
 
-    // ===================== RF03 – Gestión de Credenciales (cambio de contraseña) =====================
+    // ===================== RF03 – Gestión de Credenciales =====================
 
     @Transactional
     public void cambiarPassword(String username, String passwordActual, String passwordNueva) {
         Usuario usuario = usuarioRepository.findByUsernameAndActivoTrue(username)
                 .orElseThrow(() -> new ReglaNegocioException("Usuario no encontrado."));
 
-        // Verificar contraseña actual
         if (!passwordEncoder.matches(passwordActual, usuario.getPasswordHash())) {
             auditoriaService.registrarFallido(username, "CAMBIO_PASSWORD",
-                "Contraseña actual incorrecta");
+                    "Contraseña actual incorrecta");
             throw new ReglaNegocioException("La contraseña actual es incorrecta.");
         }
-
-        // Validar que la nueva contraseña sea diferente
         if (passwordEncoder.matches(passwordNueva, usuario.getPasswordHash())) {
-            throw new ReglaNegocioException(
-                "La nueva contraseña debe ser diferente a la actual.");
+            throw new ReglaNegocioException("La nueva contraseña debe ser diferente a la actual.");
         }
 
-        // Almacenar siempre hasheada con BCrypt — nunca en texto plano
         usuario.setPasswordHash(passwordEncoder.encode(passwordNueva));
         usuarioRepository.save(usuario);
 
         auditoriaService.registrarExitoso(username, "CAMBIO_PASSWORD",
-            "Usuario", usuario.getId(), "Contraseña actualizada correctamente");
+                "Usuario", usuario.getId(), "Contraseña actualizada correctamente");
+    }
+
+    // ===================== Desbloquear usuario (ADMIN) =====================
+
+    @Transactional
+    public void desbloquearUsuario(Long usuarioId, String adminUsername) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new ReglaNegocioException("Usuario no encontrado: " + usuarioId));
+        usuario.setBloqueado(false);
+        usuario.setIntentosFallidos(0);
+        usuarioRepository.save(usuario);
+        auditoriaService.registrarExitoso(adminUsername, "DESBLOQUEAR_USUARIO",
+                "Usuario", usuarioId, "Usuario desbloqueado por administrador");
     }
 }

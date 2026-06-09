@@ -34,6 +34,7 @@ class InstanciaServiceTest {
     @Mock private CategoriaInstanciaRepository categoriaRepository;
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private AuditoriaService auditoriaService;
+    @Mock private NotificacionService notificacionService;
 
     @InjectMocks
     private InstanciaService instanciaService;
@@ -43,7 +44,6 @@ class InstanciaServiceTest {
 
     @BeforeEach
     void setUp() {
-        // Mock SecurityContext para que getUsername() funcione
         Authentication auth = mock(Authentication.class);
         when(auth.getName()).thenReturn("admin");
         SecurityContext secCtx = mock(SecurityContext.class);
@@ -62,7 +62,7 @@ class InstanciaServiceTest {
 
         instanciaExistente = new Instancia();
         instanciaExistente.setId(1L);
-        instanciaExistente.setIdentificador("INST-20260530-0001");
+        instanciaExistente.setIdentificador("INST-20260628-0001");
         instanciaExistente.setEstudiante(estudianteActivo);
         instanciaExistente.setTitulo("Tutoría inicial");
         instanciaExistente.setFechaInstancia(LocalDateTime.now().plusDays(3));
@@ -70,8 +70,6 @@ class InstanciaServiceTest {
         instanciaExistente.setActivo(true);
         instanciaExistente.setFechaAlta(LocalDateTime.now());
     }
-
-    // ===================== Creación =====================
 
     @Test
     @DisplayName("Crear instancia válida retorna DTO con identificador generado")
@@ -92,8 +90,9 @@ class InstanciaServiceTest {
         InstanciaResponseDTO resultado = instanciaService.crear(dto);
 
         assertNotNull(resultado);
-        assertEquals("INST-20260530-0001", resultado.getIdentificador());
+        assertEquals("INST-20260628-0001", resultado.getIdentificador());
         verify(instanciaRepository).save(any(Instancia.class));
+        // RF15: notificacion puede o no llamarse dependiendo del usuario mock
     }
 
     @Test
@@ -112,8 +111,6 @@ class InstanciaServiceTest {
         verify(instanciaRepository, never()).save(any());
     }
 
-    // ===================== Listado =====================
-
     @Test
     @DisplayName("Listar instancias retorna lista correcta")
     void listar_todas_retorna_lista() {
@@ -124,7 +121,7 @@ class InstanciaServiceTest {
 
         assertNotNull(lista);
         assertEquals(1, lista.size());
-        assertEquals("INST-20260530-0001", lista.get(0).getIdentificador());
+        assertEquals("INST-20260628-0001", lista.get(0).getIdentificador());
     }
 
     @Test
@@ -136,8 +133,6 @@ class InstanciaServiceTest {
         assertThrows(RecursoNoEncontradoException.class,
                 () -> instanciaService.buscarPorId(99L));
     }
-
-    // ===================== Baja =====================
 
     @Test
     @DisplayName("Dar de baja instancia activa la cancela correctamente")
@@ -151,14 +146,12 @@ class InstanciaServiceTest {
                 !i.isActivo() && i.getEstado().equals("CANCELADA")));
     }
 
-    // ===================== Clonación =====================
-
     @Test
-    @DisplayName("Clonar instancia crea una nueva con referencia a la original")
+    @DisplayName("Clonar instancia crea nueva con referencia al origen")
     void clonar_instancia_crea_nueva_con_origen() {
         Instancia clon = new Instancia();
         clon.setId(2L);
-        clon.setIdentificador("INST-20260530-0002");
+        clon.setIdentificador("INST-20260628-0002");
         clon.setEstudiante(estudianteActivo);
         clon.setTitulo("Tutoría inicial");
         clon.setFechaInstancia(LocalDateTime.now().plusWeeks(1));

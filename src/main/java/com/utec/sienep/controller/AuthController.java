@@ -1,5 +1,6 @@
 package com.utec.sienep.controller;
 
+import com.utec.sienep.dto.request.ChangePasswordRequestDTO;
 import com.utec.sienep.dto.request.LoginRequestDTO;
 import com.utec.sienep.dto.response.ApiResponseDTO;
 import com.utec.sienep.dto.response.LoginResponseDTO;
@@ -26,16 +27,16 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "Login (RF01-RF02)",
         description = "Autentica con usuario y contraseña. Retorna un token JWT. " +
-                      "La contraseña nunca se expone en la respuesta.")
+                      "Bloquea la cuenta tras 5 intentos fallidos consecutivos (RF02).")
     public ResponseEntity<ApiResponseDTO<LoginResponseDTO>> login(
             @Valid @RequestBody LoginRequestDTO dto) {
-        LoginResponseDTO response = authService.login(dto);
-        return ResponseEntity.ok(ApiResponseDTO.ok("Login exitoso.", response));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Login exitoso.", authService.login(dto)));
     }
 
     @PostMapping("/logout")
     @Operation(summary = "Logout (RF04)",
-        description = "Registra el cierre de sesión. El cliente debe eliminar el token JWT localmente.")
+        description = "Registra el cierre de sesión en auditoría. " +
+                      "El cliente debe eliminar el token JWT localmente.")
     public ResponseEntity<ApiResponseDTO<Void>> logout(
             @AuthenticationPrincipal UserDetails userDetails) {
         authService.logout(userDetails.getUsername());
@@ -45,13 +46,15 @@ public class AuthController {
     @PutMapping("/cambiar-password")
     @Operation(summary = "Cambiar contraseña (RF03)",
         description = "Permite al usuario autenticado cambiar su propia contraseña. " +
+                      "Las contraseñas se envían en el body (nunca en la URL). " +
                       "Requiere la contraseña actual para confirmar la identidad.")
     public ResponseEntity<ApiResponseDTO<Void>> cambiarPassword(
             @AuthenticationPrincipal UserDetails userDetails,
-            @RequestParam String passwordActual,
-            @RequestParam String passwordNueva) {
+            @Valid @RequestBody ChangePasswordRequestDTO dto) {
         authService.cambiarPassword(
-                userDetails.getUsername(), passwordActual, passwordNueva);
+                userDetails.getUsername(),
+                dto.getPasswordActual(),
+                dto.getPasswordNueva());
         return ResponseEntity.ok(ApiResponseDTO.ok("Contraseña actualizada correctamente."));
     }
 }
