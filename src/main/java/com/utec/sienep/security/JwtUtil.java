@@ -40,8 +40,14 @@ public class JwtUtil {
     }
 
     public boolean validarToken(String token, UserDetails userDetails) {
-        String username = extraerUsername(token);
-        return username.equals(userDetails.getUsername()) && !estaExpirado(token);
+        try {
+            String username = extraerUsername(token);
+            return username.equals(userDetails.getUsername())
+                    && !estaExpirado(token);
+
+        } catch (JwtException | IllegalArgumentException e) {
+            return false;
+        }
     }
 
     private boolean estaExpirado(String token) {
