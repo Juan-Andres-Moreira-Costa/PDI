@@ -7,6 +7,7 @@ import com.utec.sienep.entity.Estudiante;
 import com.utec.sienep.exception.RecursoNoEncontradoException;
 import com.utec.sienep.exception.ReglaNegocioException;
 import com.utec.sienep.repository.EstudianteRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -35,6 +39,9 @@ class EstudianteServiceTest {
     @Mock
     private EstudianteRepository estudianteRepository;
 
+    @Mock
+    private AuditoriaService auditoriaService;
+
     @InjectMocks
     private EstudianteService estudianteService;
 
@@ -47,24 +54,49 @@ class EstudianteServiceTest {
 
     @BeforeEach
     void setUp() {
+
+        var auth = new UsernamePasswordAuthenticationToken(
+                "admin",
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))
+        );
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
         dtoValido = new EstudianteRequestDTO();
         dtoValido.setCedula(CEDULA_VALIDA);
         dtoValido.setNombre("Juan");
         dtoValido.setApellido("Pérez");
-        dtoValido.setEmail("juan.perez@utec.edu.uy");
+        dtoValido.setEmail("juan@test.com");
         dtoValido.setFechaNacimiento(FECHA_MAYOR);
+
+        dtoValido.setTelefono("099123456");
+        dtoValido.setDireccion("Melo");
         dtoValido.setItr("ITR Centro Sur");
-        dtoValido.setCarrera("Ingeniería en Informática");
+        dtoValido.setCarrera("Licenciatura en TI");
+        dtoValido.setGrupo("A1");
 
         estudianteExistente = new Estudiante();
         estudianteExistente.setId(1L);
         estudianteExistente.setCedula(CEDULA_VALIDA);
         estudianteExistente.setNombre("Juan");
         estudianteExistente.setApellido("Pérez");
-        estudianteExistente.setEmail("juan.perez@utec.edu.uy");
+        estudianteExistente.setEmail("juan@test.com");
         estudianteExistente.setFechaNacimiento(FECHA_MAYOR);
+
+        estudianteExistente.setTelefono("099123456");
+        estudianteExistente.setDireccion("Melo");
+        estudianteExistente.setItr("ITR Norte");
+        estudianteExistente.setCarrera("Licenciatura en TI");
+        estudianteExistente.setGrupo("Melo");
+
         estudianteExistente.setActivo(true);
         estudianteExistente.setFechaAlta(LocalDateTime.now());
+    }
+
+    @AfterEach
+    void tearDown() {
+        // Limpiar el contexto después de cada test para no contaminar otros
+        SecurityContextHolder.clearContext();
     }
 
     // Alta
