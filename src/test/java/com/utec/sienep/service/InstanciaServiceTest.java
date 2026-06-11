@@ -5,6 +5,7 @@ import com.utec.sienep.dto.response.InstanciaResponseDTO;
 import com.utec.sienep.entity.*;
 import com.utec.sienep.exception.RecursoNoEncontradoException;
 import com.utec.sienep.repository.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,9 +46,9 @@ class InstanciaServiceTest {
     @BeforeEach
     void setUp() {
         Authentication auth = mock(Authentication.class);
-        when(auth.getName()).thenReturn("admin");
+        lenient().when(auth.getName()).thenReturn("admin");
         SecurityContext secCtx = mock(SecurityContext.class);
-        when(secCtx.getAuthentication()).thenReturn(auth);
+        lenient().when(secCtx.getAuthentication()).thenReturn(auth);
         SecurityContextHolder.setContext(secCtx);
 
         estudianteActivo = new Estudiante();
@@ -62,13 +63,18 @@ class InstanciaServiceTest {
 
         instanciaExistente = new Instancia();
         instanciaExistente.setId(1L);
-        instanciaExistente.setIdentificador("INST-20260628-0001");
+        instanciaExistente.setIdentificador("INST-20260609-0001");
         instanciaExistente.setEstudiante(estudianteActivo);
         instanciaExistente.setTitulo("Tutoría inicial");
         instanciaExistente.setFechaInstancia(LocalDateTime.now().plusDays(3));
         instanciaExistente.setEstado("PROGRAMADA");
         instanciaExistente.setActivo(true);
         instanciaExistente.setFechaAlta(LocalDateTime.now());
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -90,9 +96,9 @@ class InstanciaServiceTest {
         InstanciaResponseDTO resultado = instanciaService.crear(dto);
 
         assertNotNull(resultado);
-        assertEquals("INST-20260628-0001", resultado.getIdentificador());
+        assertEquals("INST-20260609-0001", resultado.getIdentificador());
         verify(instanciaRepository).save(any(Instancia.class));
-        // RF15: notificacion puede o no llamarse dependiendo del usuario mock
+        // notificacion puede o no llamarse dependiendo del usuario mock
     }
 
     @Test
@@ -121,7 +127,7 @@ class InstanciaServiceTest {
 
         assertNotNull(lista);
         assertEquals(1, lista.size());
-        assertEquals("INST-20260628-0001", lista.get(0).getIdentificador());
+        assertEquals("INST-20260609-0001", lista.get(0).getIdentificador());
     }
 
     @Test
@@ -151,7 +157,7 @@ class InstanciaServiceTest {
     void clonar_instancia_crea_nueva_con_origen() {
         Instancia clon = new Instancia();
         clon.setId(2L);
-        clon.setIdentificador("INST-20260628-0002");
+        clon.setIdentificador("INST-20260609-0002");
         clon.setEstudiante(estudianteActivo);
         clon.setTitulo("Tutoría inicial");
         clon.setFechaInstancia(LocalDateTime.now().plusWeeks(1));
