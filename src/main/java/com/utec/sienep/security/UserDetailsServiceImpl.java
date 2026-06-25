@@ -27,6 +27,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 .username(usuario.getUsername())
                 // La contraseña ya está hasheada en BD — Spring Security la compara internamente
                 .password(usuario.getPasswordHash())
+                .disabled(usuario.isBloqueado())
                 .authorities(usuario.getRoles().stream()
                         .map(r -> new SimpleGrantedAuthority(r.getNombre()))
                         .collect(Collectors.toList()))
