@@ -11,11 +11,9 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.Set;
 
-/**
- * Crea el usuario administrador inicial si no existe.
- * Credenciales por defecto: admin / Admin1234!
- * IMPORTANTE: cambiar la contraseña después del primer login.
- */
+//Creación del usuario administrador inicial si no existe
+// Credenciales: admin / Admin1234!
+
 @Component
 public class DataInitializer implements CommandLineRunner {
 
@@ -23,19 +21,17 @@ public class DataInitializer implements CommandLineRunner {
     private final RolRepository rolRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public DataInitializer(UsuarioRepository usuarioRepository,
-                           RolRepository rolRepository,
-                           PasswordEncoder passwordEncoder) {
+    public DataInitializer(UsuarioRepository usuarioRepository, RolRepository rolRepository, PasswordEncoder passwordEncoder) {
         this.usuarioRepository = usuarioRepository;
         this.rolRepository = rolRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Override
+    // Usuario de desarrollo. En producción se deshabilita o cambia credenciales.
     public void run(String... args) {
         if (!usuarioRepository.existsByUsername("admin")) {
-            Rol rolAdmin = rolRepository.findByNombre("ROLE_ADMIN")
-                    .orElseGet(() -> {
+            Rol rolAdmin = rolRepository.findByNombre("ROLE_ADMIN").orElseGet(() -> {
                         Rol r = new Rol("ROLE_ADMIN");
                         r.setDescripcion("Administrador del sistema");
                         return rolRepository.save(r);
@@ -43,7 +39,8 @@ public class DataInitializer implements CommandLineRunner {
 
             Usuario admin = new Usuario();
             admin.setUsername("admin");
-            // Contraseña almacenada con BCrypt — nunca en texto plano
+
+            // Contraseña almacenada con BCrypt
             admin.setPasswordHash(passwordEncoder.encode("Admin1234!"));
             admin.setNombre("Administrador");
             admin.setApellido("SIENEP");
