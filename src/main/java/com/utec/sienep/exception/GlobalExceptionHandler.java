@@ -49,6 +49,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponseDTO<Void>> handleGenerico(Exception ex) {
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponseDTO.error("Error interno del servidor: " + ex.getMessage()));
+                .body(ApiResponseDTO.error("Error interno del servidor. Contacte al administrador."));
     }
 }
