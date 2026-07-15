@@ -17,7 +17,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/incidencias")
-@Tag(name = "Incidencias", description = "Registro y seguimiento de incidencias (RF28-RF29)")
+@Tag(name = "Incidencias", description = "Registro y seguimiento de incidencias")
 @SecurityRequirement(name = "bearerAuth")
 public class IncidenciaController {
 
@@ -27,63 +27,54 @@ public class IncidenciaController {
         this.incidenciaService = incidenciaService;
     }
 
-    // RF28 – Registrar incidencia
+    // Registrar incidencia
     @PostMapping
-    @Operation(summary = "Registrar incidencia (RF28)",
-        description = "Registra una nueva incidencia para un estudiante. " +
-                      "Puede vincularse a una instancia existente. " +
-                      "Severidades: BAJA, MEDIA, ALTA, CRITICA.")
+    @Operation(summary = "Registrar incidencia",
+            description = "Registra una nueva incidencia para un estudiante. " + "Puede vincularse a una instancia existente. " + "Severidades: BAJA, MEDIA, ALTA, CRITICA.")
     @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<IncidenciaResponseDTO>> registrar(
             @Valid @RequestBody IncidenciaRequestDTO dto) {
         IncidenciaResponseDTO creada = incidenciaService.registrar(dto);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponseDTO.ok("Incidencia registrada exitosamente.", creada));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponseDTO.ok("Incidencia registrada exitosamente.", creada));
     }
 
     // Listar todas
     @GetMapping
     @Operation(summary = "Listar incidencias activas")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE','PSICOPEDAGOGO','DIRECCION')")
     public ResponseEntity<ApiResponseDTO<List<IncidenciaResponseDTO>>> listar() {
-        return ResponseEntity.ok(
-                ApiResponseDTO.ok("Listado de incidencias.", incidenciaService.listarTodas()));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Listado de incidencias.", incidenciaService.listarTodas()));
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Buscar incidencia por ID")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE','PSICOPEDAGOGO','DIRECCION')")
     public ResponseEntity<ApiResponseDTO<IncidenciaResponseDTO>> buscarPorId(
             @PathVariable Long id) {
-        return ResponseEntity.ok(
-                ApiResponseDTO.ok("Incidencia encontrada.", incidenciaService.buscarPorId(id)));
+        return ResponseEntity.ok(ApiResponseDTO.ok("Incidencia encontrada.", incidenciaService.buscarPorId(id)));
     }
 
-    // RF29 – Historial por estudiante (incluye cerradas)
+    // Historial por estudiante
     @GetMapping("/historial/{estudianteId}")
-    @Operation(summary = "Historial de incidencias por estudiante (RF29)",
-        description = "Retorna el historial completo de incidencias del estudiante, " +
-                      "incluyendo las resueltas y cerradas. Garantiza trazabilidad histórica.")
+    @Operation(summary = "Historial de incidencias por estudiante",
+            description = "Retorna el historial completo de incidencias del estudiante, " + "incluyendo las resueltas y cerradas. Garantiza trazabilidad histórica.")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE','PSICOPEDAGOGO','DIRECCION')")
     public ResponseEntity<ApiResponseDTO<List<IncidenciaResponseDTO>>> historial(
             @PathVariable Long estudianteId) {
-        List<IncidenciaResponseDTO> historial =
-                incidenciaService.historialPorEstudiante(estudianteId);
-        return ResponseEntity.ok(
-                ApiResponseDTO.ok("Historial de incidencias del estudiante.", historial));
+        List<IncidenciaResponseDTO> historial = incidenciaService.historialPorEstudiante(estudianteId);
+        return ResponseEntity.ok(ApiResponseDTO.ok("Historial de incidencias del estudiante.", historial));
     }
 
     // Cambiar estado de la incidencia
     @PatchMapping("/{id}/estado")
     @Operation(summary = "Cambiar estado de incidencia",
-        description = "Actualiza el estado de la incidencia. " +
-                      "Estados válidos: ABIERTA, EN_PROCESO, RESUELTA, CERRADA. " +
-                      "Si el estado es RESUELTA o CERRADA, registra la resolución y la fecha de cierre.")
+            description = "Actualiza el estado de la incidencia. " + "Estados válidos: ABIERTA, EN_PROCESO, RESUELTA, CERRADA. " + "Si el estado es RESUELTA o CERRADA, registra la resolución y la fecha de cierre.")
     @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<IncidenciaResponseDTO>> cambiarEstado(
             @PathVariable Long id,
             @RequestParam String estado,
             @RequestParam(required = false) String resolucion) {
-        IncidenciaResponseDTO actualizada =
-                incidenciaService.cambiarEstado(id, estado, resolucion);
-        return ResponseEntity.ok(
-                ApiResponseDTO.ok("Estado de incidencia actualizado.", actualizada));
+        IncidenciaResponseDTO actualizada = incidenciaService.cambiarEstado(id, estado, resolucion);
+        return ResponseEntity.ok(ApiResponseDTO.ok("Estado de incidencia actualizado.", actualizada));
     }
 }
