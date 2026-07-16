@@ -19,7 +19,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/instancias")
-@Tag(name = "Instancias", description = "Gestión de instancias del sistema SIENEP (RF10-RF18)")
+@Tag(name = "Instancias", description = "Gestión de instancias del sistema SIENEP")
 @SecurityRequirement(name = "bearerAuth")
 public class InstanciaController {
 
@@ -30,8 +30,8 @@ public class InstanciaController {
     }
 
     @PostMapping
-    @Operation(summary = "Registrar instancia (RF10)",
-        description = "Crea una nueva instancia asociada a un estudiante. Genera automáticamente el identificador (RF14).")
+    @Operation(summary = "Registrar instancia",
+            description = "Crea una nueva instancia asociada a un estudiante. Genera automáticamente el identificador")
     @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<InstanciaResponseDTO>> crear(
             @Valid @RequestBody InstanciaRequestDTO dto) {
@@ -41,8 +41,9 @@ public class InstanciaController {
     }
 
     @GetMapping
-    @Operation(summary = "Listar instancias (RF12)",
-        description = "Lista todas las instancias activas. Filtro opcional por estudiante.")
+    @Operation(summary = "Listar instancias",
+            description = "Lista todas las instancias activas. Filtro opcional por estudiante.")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE','PSICOPEDAGOGO','TUTOR','DIRECCION')")
     public ResponseEntity<ApiResponseDTO<List<InstanciaResponseDTO>>> listar(
             @RequestParam(required = false) Long estudianteId) {
         List<InstanciaResponseDTO> lista = estudianteId != null
@@ -52,7 +53,8 @@ public class InstanciaController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Buscar instancia por ID (RF12)")
+    @Operation(summary = "Buscar instancia por ID")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCENTE','PSICOPEDAGOGO','TUTOR','DIRECCION')")
     public ResponseEntity<ApiResponseDTO<InstanciaResponseDTO>> buscarPorId(
             @PathVariable Long id) {
         return ResponseEntity.ok(
@@ -60,7 +62,7 @@ public class InstanciaController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Modificar instancia (RF16)")
+    @Operation(summary = "Modificar instancia")
     @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<InstanciaResponseDTO>> modificar(
             @PathVariable Long id,
@@ -70,7 +72,7 @@ public class InstanciaController {
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Cancelar instancia — baja lógica (RF16)")
+    @Operation(summary = "Cancelar instancia — baja lógica")
     @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<Void>> darDeBaja(@PathVariable Long id) {
         instanciaService.darDeBaja(id);
@@ -78,8 +80,8 @@ public class InstanciaController {
     }
 
     @PostMapping("/{id}/clonar")
-    @Operation(summary = "Clonar instancia (RF17)",
-        description = "Crea una copia de la instancia. Se puede indicar una nueva fecha; si no se indica, se programa una semana después.")
+    @Operation(summary = "Clonar instancia",
+            description = "Crea una copia de la instancia. Se puede indicar una nueva fecha; si no se indica, se programa una semana después.")
     @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<InstanciaResponseDTO>> clonar(
             @PathVariable Long id,
@@ -90,12 +92,11 @@ public class InstanciaController {
                 .body(ApiResponseDTO.ok("Instancia clonada exitosamente.", clonada));
     }
 
-    // RF18 – Nueva instancia desde ficha de alumno
-    // Este endpoint recibe el estudianteId en el path para dejar clara la semántica
+    // Nueva instancia desde ficha de alumno
     @PostMapping("/desde-estudiante/{estudianteId}")
-    @Operation(summary = "Nueva instancia desde ficha de alumno (RF18)",
-        description = "Crea una instancia directamente desde la ficha del estudiante. " +
-                      "El estudianteId se toma del path y se completa el resto del body.")
+    @Operation(summary = "Nueva instancia desde ficha de alumno",
+            description = "Crea una instancia directamente desde la ficha del estudiante. " +
+                    "El estudianteId se toma del path y se completa el resto del body.")
     @PreAuthorize("hasAnyRole('ADMIN','DOCENTE')")
     public ResponseEntity<ApiResponseDTO<InstanciaResponseDTO>> crearDesdeEstudiante(
             @PathVariable Long estudianteId,
