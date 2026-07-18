@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Set;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Entity
 @Table(name = "usuarios", schema = "proyecto")
@@ -17,6 +18,7 @@ public class Usuario {
     @Column(name = "username", nullable = false, unique = true, length = 100)
     private String username;
 
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "pas_hash", nullable = false, length = 255)
     private String passwordHash;
 
@@ -49,10 +51,10 @@ public class Usuario {
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
-        name = "usua_roles",
-        schema = "proyecto",
-        joinColumns = @JoinColumn(name = "fk_usua_usuario"),
-        inverseJoinColumns = @JoinColumn(name = "fk_usua_rol")
+            name = "usua_roles",
+            schema = "proyecto",
+            joinColumns = @JoinColumn(name = "fk_usua_usuario"),
+            inverseJoinColumns = @JoinColumn(name = "fk_usua_rol")
     )
     private Set<Rol> roles = new HashSet<>();
 
