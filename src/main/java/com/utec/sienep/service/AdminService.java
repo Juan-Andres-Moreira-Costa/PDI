@@ -1,6 +1,7 @@
 package com.utec.sienep.service;
 
 import com.utec.sienep.dto.response.ApiResponseDTO;
+import com.utec.sienep.dto.response.UsuarioResponseDTO;
 import com.utec.sienep.entity.Rol;
 import com.utec.sienep.entity.Usuario;
 import com.utec.sienep.exception.RecursoNoEncontradoException;
@@ -20,22 +21,20 @@ public class AdminService {
     private final UsuarioRepository usuarioRepository;
     private final AuditoriaService auditoriaService;
 
-    public AdminService(RolRepository rolRepository,
-                        UsuarioRepository usuarioRepository,
-                        AuditoriaService auditoriaService) {
+    public AdminService(RolRepository rolRepository, UsuarioRepository usuarioRepository, AuditoriaService auditoriaService) {
         this.rolRepository = rolRepository;
         this.usuarioRepository = usuarioRepository;
         this.auditoriaService = auditoriaService;
     }
 
-    // ===================== RF32-RF33 – Gestión y roles preexistentes =====================
+    // Gestión y roles preexistentes
 
     @Transactional(readOnly = true)
     public List<Rol> listarRoles() {
         return rolRepository.findAll();
     }
 
-    // RF34 – Roles personalizados: crear un nuevo rol
+    // Roles personalizados: crear un nuevo rol
     @Transactional
     public Rol crearRol(String nombre, String descripcion) {
         if (!nombre.startsWith("ROLE_")) {
@@ -52,21 +51,16 @@ public class AdminService {
         rol.setDescripcion(descripcion);
         Rol guardado = rolRepository.save(rol);
 
-        auditoriaService.registrarExitoso(getUsername(), "ALTA_ROL",
-                "Rol", guardado.getId(), "Rol creado: " + nombreFinal);
+        auditoriaService.registrarExitoso(getUsername(), "ALTA_ROL", "Rol", guardado.getId(), "Rol creado: " + nombreFinal);
         return guardado;
     }
 
-    // ===================== Asignar rol a usuario =====================
+    // Asignar rol a usuario
 
     @Transactional
     public void asignarRol(Long usuarioId, Long rolId) {
-        Usuario usuario = usuarioRepository.findById(usuarioId)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "Usuario no encontrado: " + usuarioId));
-        Rol rol = rolRepository.findById(rolId)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "Rol no encontrado: " + rolId));
+        Usuario usuario = usuarioRepository.findById(usuarioId).orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado: " + usuarioId));
+        Rol rol = rolRepository.findById(rolId).orElseThrow(() -> new RecursoNoEncontradoException("Rol no encontrado: " + rolId));
 
         if (usuario.getRoles().contains(rol)) {
             throw new ReglaNegocioException("El usuario ya tiene asignado el rol: " + rol.getNombre());
@@ -75,44 +69,38 @@ public class AdminService {
         usuario.getRoles().add(rol);
         usuarioRepository.save(usuario);
 
-        auditoriaService.registrarExitoso(getUsername(), "ASIGNAR_ROL",
-                "Usuario", usuarioId,
-                "Rol " + rol.getNombre() + " asignado a usuario ID " + usuarioId);
+        auditoriaService.registrarExitoso(getUsername(), "ASIGNAR_ROL", "Usuario", usuarioId, "Rol " + rol.getNombre() + " asignado a usuario ID " + usuarioId);
     }
 
-    // ===================== Quitar rol de usuario =====================
+    // Quitar rol de usuario
 
     @Transactional
     public void quitarRol(Long usuarioId, Long rolId) {
-        Usuario usuario = usuarioRepository.findById(usuarioId)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "Usuario no encontrado: " + usuarioId));
-        Rol rol = rolRepository.findById(rolId)
-                .orElseThrow(() -> new RecursoNoEncontradoException(
-                        "Rol no encontrado: " + rolId));
+        Usuario usuario = usuarioRepository.findById(usuarioId).orElseThrow(() -> new RecursoNoEncontradoException("Usuario no encontrado: " + usuarioId));
+        Rol rol = rolRepository.findById(rolId).orElseThrow(() -> new RecursoNoEncontradoException("Rol no encontrado: " + rolId));
 
         if (!usuario.getRoles().contains(rol)) {
-            throw new ReglaNegocioException(
-                    "El usuario no tiene asignado el rol: " + rol.getNombre());
+            throw new ReglaNegocioException("El usuario no tiene asignado el rol: " + rol.getNombre());
         }
         if (usuario.getRoles().size() == 1) {
-            throw new ReglaNegocioException(
-                    "No se puede quitar el único rol del usuario. Asigná otro primero.");
+            throw new ReglaNegocioException("No se puede quitar el único rol del usuario. Asigná otro primero.");
         }
 
         usuario.getRoles().remove(rol);
         usuarioRepository.save(usuario);
 
-        auditoriaService.registrarExitoso(getUsername(), "QUITAR_ROL",
-                "Usuario", usuarioId,
-                "Rol " + rol.getNombre() + " quitado a usuario ID " + usuarioId);
+        auditoriaService.registrarExitoso(getUsername(), "QUITAR_ROL", "Usuario", usuarioId, "Rol " + rol.getNombre() + " quitado a usuario ID " + usuarioId);
     }
 
-    // ===================== Listar usuarios =====================
+    // Listar usuarios
 
     @Transactional(readOnly = true)
-    public List<Usuario> listarUsuarios() {
-        return usuarioRepository.findAll();
+    public List<UsuarioResponseDTO> listarUsuarios() {
+
+        return usuarioRepository.findAll()
+                .stream()
+                .map(this::toResponseDTO)
+                .toList();
     }
 
     private String getUsername() {
@@ -121,5 +109,30 @@ public class AdminService {
         } catch (Exception e) {
             return "sistema";
         }
+    }
+
+    private UsuarioResponseDTO toResponseDTO(Usuario usuario) {
+
+        UsuarioResponseDTO dto = new UsuarioResponseDTO();
+
+        dto.setId(usuario.getId());
+        dto.setUsername(usuario.getUsername());
+        dto.setNombre(usuario.getNombre());
+        dto.setApellido(usuario.getApellido());
+        dto.setEmail(usuario.getEmail());
+        dto.setActivo(usuario.isActivo());
+        dto.setFechaAlta(usuario.getFechaAlta());
+        dto.setUltimoLogin(usuario.getUltimoLogin());
+        dto.setIntentosFallidos(usuario.getIntentosFallidos());
+        dto.setBloqueado(usuario.isBloqueado());
+
+        dto.setRoles(
+                usuario.getRoles()
+                        .stream()
+                        .map(Rol::getNombre)
+                        .collect(java.util.stream.Collectors.toSet())
+        );
+
+        return dto;
     }
 }
